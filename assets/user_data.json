@@ -1,0 +1,30 @@
+[{
+    "username": "user",
+    "password": "frag",
+    "name": "Fra",
+    "surname": "G",
+    "email": "test@gmail.com",
+    "phone": "12345",
+    "role": "user"
+  },
+  {
+    "username": "vendor1",
+    "password": "frag",
+    "name": "Fra",
+    "surname": "G",
+    "shop": "Negozio ASD",
+    "email": "test@gmail.com",
+    "phone": "12345",
+    "role": "vendor"
+  },
+  {
+    "username": "vendor2",
+    "password": "frag",
+    "name": "Fra",
+    "surname": "G",
+    "shop": "Negozio XYZ",
+    "email": "test@gmail.com",
+    "phone": "12345",
+    "role": "vendor"
+  }
+]
