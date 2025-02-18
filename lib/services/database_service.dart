@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Offer {
   String id;
@@ -55,9 +56,10 @@ class Offer {
 }
 
 class DatabaseService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static List<Offer> _offers = [];
 
-  // Carica le offerte da un file JSON locale
+  /*  // Carica le offerte da un file JSON locale
   static Future<void> loadOffers() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
@@ -85,34 +87,34 @@ class DatabaseService {
       print("Errore nel salvataggio delle offerte: $e");
     }
   }
-
-  // Aggiunge una nuova offerta
+ */
+/*   // Aggiunge una nuova offerta
   static Future<void> addOffer(Offer offer) async {
     _offers.add(offer);
     await saveOffers();
-  }
+  } */
 
-  // Modifica un'offerta esistente
+  /*  // Modifica un'offerta esistente
   static Future<void> updateOffer(String id, Offer updatedOffer) async {
     int index = _offers.indexWhere((offer) => offer.id == id);
     if (index != -1) {
       _offers[index] = updatedOffer;
       await saveOffers();
     }
-  }
-
+  } */
+/* 
   // Elimina un'offerta
   static Future<void> deleteOffer(String id) async {
     _offers.removeWhere((offer) => offer.id == id);
     await saveOffers();
-  }
+  } */
 
-  // Recupera tutte le offerte
+/*   // Recupera tutte le offerte
   static List<Offer> getOffers() {
     return _offers;
   }
-
-  // Filtra le offerte per categoria
+ */
+/*   // Filtra le offerte per categoria
   static List<Offer> getOffersByCategory(String category) {
     return _offers.where((offer) => offer.category == category).toList();
   }
@@ -122,5 +124,58 @@ class DatabaseService {
     return _offers
         .where((offer) => offer.discount >= min && offer.discount <= max)
         .toList();
+  }
+ */
+
+  // ✅ Aggiungere una nuova offerta
+  Future<void> addOffer(Map<String, dynamic> offerData) async {
+    try {
+      await _firestore.collection('offers').add(offerData);
+    } catch (e) {
+      print("Errore nell'aggiungere l'offerta: $e");
+    }
+  }
+
+  /// **🔹 Ottiene tutte le offerte da Firestore**
+  Future<List<Map<String, dynamic>>> getOffers() async {
+    try {
+      QuerySnapshot snapshot = await _firestore.collection('offers').get();
+      return snapshot.docs
+          .map((doc) => doc.data() as Map<String, dynamic>)
+          .toList();
+    } catch (e) {
+      print("❌ Errore nel recupero delle offerte: $e");
+      return [];
+    }
+  }
+
+  /// ✅ Recupera le offerte di un singolo venditore
+  Future<List<Map<String, dynamic>>> getVendorOffers(String vendorId) async {
+    try {
+      QuerySnapshot snapshot = await _firestore
+          .collection('offers')
+          .where('vendorId', isEqualTo: vendorId)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        print("⚠️ Nessuna offerta trovata per il venditore $vendorId.");
+        return [];
+      }
+
+      return snapshot.docs.map((doc) {
+        return {
+          "id": doc.id,
+          ...doc.data() as Map<String, dynamic>,
+        };
+      }).toList();
+    } catch (e) {
+      print("❌ Errore nel recupero delle offerte del venditore: $e");
+      return [];
+    }
+  }
+
+  //✅ Elimina un'offerta
+  void _deleteOffer(String offerId) {
+    _firestore.collection('offers').doc(offerId).delete();
   }
 }

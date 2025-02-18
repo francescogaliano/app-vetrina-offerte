@@ -1,26 +1,36 @@
 import 'package:flutter/material.dart';
-//import 'offers_list.dart';
+//import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_page.dart';
+import 'chat_list_page.dart';
 import 'profile.dart';
-import 'login.dart';
+//import 'login_screen.dart';
 import 'user_offers.dart';
-import 'user_model.dart';
+import '../models/user_model.dart';
+import '../services/firebase_auth_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserHome extends StatefulWidget {
-  final Map<String, dynamic> userData;
+  //final Map<String, dynamic> userData;
+  final String uid;
+  final int initialPage; // Parametro per gestire la pagina iniziale
 
-  UserHome({required this.userData});
+  const UserHome({required this.uid, this.initialPage = 0, Key? key})
+      : super(key: key);
 
   @override
   _UserHomeState createState() => _UserHomeState();
 }
 
 class _UserHomeState extends State<UserHome> {
+  Map<String, dynamic>? userData;
+  bool isLoading = true;
   int _selectedIndex = 0;
+
   bool isLoggedIn = true;
   Map<String, List<String>> chatMessages = {};
   String selectedChat = '';
   String selectedVendor = "";
+  UserModel? loggedInUser;
 
   List<String> selectedCategories = [];
   DateTime? startDate;
@@ -38,6 +48,8 @@ class _UserHomeState extends State<UserHome> {
   final TextEditingController minDiscountController = TextEditingController();
   final TextEditingController maxDiscountController = TextEditingController();
 
+  //final FirebaseAuthService _authService = FirebaseAuthService();
+
   @override
   void dispose() {
     minDiscountController.dispose();
@@ -48,59 +60,60 @@ class _UserHomeState extends State<UserHome> {
   @override
   void initState() {
     super.initState();
-    _loadUserSession();
+    //_loadUserSession();
+    _fetchUserData();
+    //_selectedIndex = widget.initialPage; // Imposta la landing page
   }
 
-  Future<void> _loadUserSession() async {
-    // Recupera l'utente loggato se non è già stato caricato
-    if (loggedInUser == null) {
-      loggedInUser = UserModel.fromJson(widget.userData);
+/*   Future<void> _loadUserData() async {
+    userData = await AuthService().getUserData(widget.uid);
+    if (userData != null) {
+      setState(() {}); // Ricarica lo stato quando i dati sono disponibili
     }
+  } */
+  Future<void> _fetchUserData() async {
+    Map<String, dynamic>? fetchedData =
+        await FirebaseAuthService().fetchUserData(widget.uid);
+    setState(() {
+      userData = fetchedData;
+      isLoading = false;
+    });
   }
 
   void _onItemTapped(int index) {
     setState(() {
-      if (index == 1) {
-        selectedChat = ''; // Torna alla lista delle chat
-      } else {
-        isChatting = false; // Se si cambia pannello, chiude la chat
-        selectedChat = '';
-      }
       _selectedIndex = index;
     });
   }
 
-  void _startChat(String vendorName) {
-    setState(() {
-      selectedVendor = vendorName;
-    });
-
-    if (!chatMessages.containsKey(vendorName)) {
-      chatMessages[vendorName] = [];
-    }
-
+  void _startChat(String vendorId) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ChatPage(
-            vendorName: selectedChat, currentUser: loggedInUser!.username),
+          currentUserId: widget.uid, // L'UID dell'utente
+          receiverUserId: vendorId, // L'UID del venditore con cui chatta
+        ),
       ),
     );
   }
 
-  void _logout() {
-    setState(() {
-      isLoggedIn = false;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => LoginScreen()),
-      );
-    });
-  }
+/*   void _logout() async {
+    await _authService.signOut();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => LoginScreen()),
+    );
+  } */
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return Center(child: CircularProgressIndicator());
+    }
+
     return Scaffold(
+      appBar: AppBar(title: Text("Benvenuto ${userData?['email']}")),
       body: Column(
         children: [
           Container(
@@ -127,7 +140,6 @@ class _UserHomeState extends State<UserHome> {
               ],
             ),
           ),
-          //if (_selectedIndex == 0 && !isChatting) _buildFilterToggleButton(),
           if (selectedChat.isNotEmpty)
             Container(
               color: Colors.blue.shade100,
@@ -154,12 +166,17 @@ class _UserHomeState extends State<UserHome> {
                 ],
               ),
             ),
-          Expanded(
+          /* Expanded(
             child: selectedChat.isEmpty
                 ? _widgetOptions().elementAt(_selectedIndex)
                 : ChatPage(
                     vendorName: selectedChat,
                     currentUser: loggedInUser!.username),
+          ), */
+          Expanded(
+            child: userData == null
+                ? Center(child: CircularProgressIndicator()) // Mostra loading
+                : _widgetOptions()[_selectedIndex],
           ),
         ],
       ),
@@ -167,17 +184,15 @@ class _UserHomeState extends State<UserHome> {
   }
 
   List<Widget> _widgetOptions() {
-    return <Widget>[
-      UserOffersPage(),
-      ChatListPage(
-        startChat: _startChat,
-        isVendor: false, // L'utente non è un venditore
-        currentUser: loggedInUser!.username,
-      ),
-      ProfilePage(
-        userData: widget.userData,
-        logoutCallback: _logout,
-      ),
+    if (userData == null) {
+      return [
+        Center(child: CircularProgressIndicator())
+      ]; // Attesa caricamento dati
+    }
+    return [
+      UserOffersPage(uid: widget.uid),
+      ChatListPage(uid: widget.uid), // Nuova pagina lista chat
+      ProfilePage(uid: widget.uid),
     ];
   }
 }

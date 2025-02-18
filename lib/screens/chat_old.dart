@@ -4,7 +4,8 @@ class ChatListPage extends StatelessWidget {
   final Map<String, List<String>> chatMessages;
   final Function(String) startChat;
 
-  ChatListPage({required this.chatMessages, required this.startChat});
+  const ChatListPage(
+      {super.key, required this.chatMessages, required this.startChat});
 
   @override
   Widget build(BuildContext context) {
@@ -68,20 +69,21 @@ class ChatDetailPage extends StatefulWidget {
   final Map<String, List<String>> chatMessages;
   final String selectedChat;
 
-  ChatDetailPage({required this.chatMessages, required this.selectedChat});
+  const ChatDetailPage(
+      {super.key, required this.chatMessages, required this.selectedChat});
 
   @override
   _ChatDetailPageState createState() => _ChatDetailPageState();
 }
 
 class _ChatDetailPageState extends State<ChatDetailPage> {
-  TextEditingController _messageController = TextEditingController();
+  final TextEditingController _messageController = TextEditingController();
 
   void _sendMessage() {
     if (_messageController.text.isNotEmpty) {
       setState(() {
         widget.chatMessages[widget.selectedChat]
-            ?.add("Utente: " + _messageController.text);
+            ?.add("Utente: ${_messageController.text}");
         _messageController.clear();
       });
     }

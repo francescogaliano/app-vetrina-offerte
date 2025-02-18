@@ -1,193 +1,190 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'login_screen.dart';
 
 class ProfilePage extends StatefulWidget {
-  final Map<String, dynamic> userData;
-  final VoidCallback logoutCallback;
+  final String uid; // UID dell'utente autenticato
 
-  ProfilePage({required this.userData, required this.logoutCallback});
+  const ProfilePage({super.key, required this.uid});
 
   @override
   _ProfilePageState createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  late TextEditingController _nameController;
-  late TextEditingController _surnameController;
-  late TextEditingController _emailController;
-  late TextEditingController _phoneController;
-  late TextEditingController _currentPasswordController;
-  late TextEditingController _newPasswordController;
-  bool isEditing = false;
-  bool isChangingPassword = false;
-  String? errorMessage;
+  Map<String, dynamic>? userData;
+  bool isLoading = true;
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _shopController = TextEditingController();
+  final TextEditingController _oldPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.userData['name']);
-    _surnameController =
-        TextEditingController(text: widget.userData['surname']);
-    _emailController = TextEditingController(text: widget.userData['email']);
-    _phoneController = TextEditingController(text: widget.userData['phone']);
-    _currentPasswordController = TextEditingController();
-    _newPasswordController = TextEditingController();
+    _fetchUserData();
   }
 
-  Future<void> _saveUserData() async {
+  /// 🔹 Recupera i dati dell'utente da Firestore
+  Future<void> _fetchUserData() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/user_data.json');
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .get();
 
-      Map<String, dynamic> updatedUserData = {
-        "username": widget.userData['username'],
-        "password":
-            widget.userData['password'], // Mantiene la password esistente
-        "name": _nameController.text,
-        "surname": _surnameController.text,
-        "email": _emailController.text,
-        "phone": _phoneController.text
-      };
-
-      await file.writeAsString(jsonEncode(updatedUserData));
-      setState(() {
-        widget.userData.addAll(updatedUserData);
-        isEditing = false;
-      });
-    } catch (e) {
-      print("Errore nel salvataggio dei dati: $e");
-    }
-  }
-
-  Future<void> _changePassword() async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/user_data.json');
-
-      if (_currentPasswordController.text != widget.userData['password']) {
+      if (doc.exists) {
         setState(() {
-          errorMessage = "La password attuale non è corretta!";
+          userData = doc.data() as Map<String, dynamic>?;
+          _nameController.text = userData?['name'] ?? '';
+          _shopController.text = userData?['shopName'] ?? '';
+          isLoading = false;
         });
-        return;
       }
+    } catch (e) {
+      print("Errore nel recupero dati utente: $e");
+    }
+  }
 
-      Map<String, dynamic> updatedUserData = {
-        ...widget.userData,
-        "password": _newPasswordController.text
-      };
-
-      await file.writeAsString(jsonEncode(updatedUserData));
-
-      setState(() {
-        widget.userData['password'] = _newPasswordController.text;
-        isChangingPassword = false;
-        errorMessage = null;
+  /// 🔹 Permette di modificare nome o shopName
+  Future<void> _updateProfile() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .update({
+        'name': _nameController.text.trim(),
+        if (userData?['role'] == 'vendor')
+          'shopName': _shopController.text.trim(),
       });
 
-      print("✅ Password aggiornata con successo!");
+      setState(() {
+        userData?['name'] = _nameController.text.trim();
+        if (userData?['role'] == 'vendor') {
+          userData?['shopName'] = _shopController.text.trim();
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("✅ Dati aggiornati con successo!")),
+      );
     } catch (e) {
-      print("❌ Errore nel salvataggio della password: $e");
+      print("Errore nell'aggiornamento profilo: $e");
     }
+  }
+
+  /// 🔹 Permette di cambiare la password con verifica della password attuale
+  Future<void> _changePassword() async {
+    User? user = FirebaseAuth.instance.currentUser;
+
+    try {
+      AuthCredential credential = EmailAuthProvider.credential(
+        email: user!.email!,
+        password: _oldPasswordController.text.trim(),
+      );
+
+      await user.reauthenticateWithCredential(credential);
+
+      await user.updatePassword(_newPasswordController.text.trim());
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("✅ Password aggiornata con successo!")),
+      );
+
+      _oldPasswordController.clear();
+      _newPasswordController.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("❌ Errore: password errata o troppo debole.")),
+      );
+    }
+  }
+
+  /// 🔹 Effettua il logout e torna alla LoginScreen
+  void _logout() async {
+    await FirebaseAuth.instance.signOut();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => LoginScreen()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
+    if (isLoading) {
+      return Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: Text("Profilo Utente")),
+      body: Padding(
         padding: EdgeInsets.all(16.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.blue,
-              child: Text(
-                widget.userData['name'][0] + widget.userData['surname'][0],
-                style: TextStyle(fontSize: 24, color: Colors.white),
+            // 🔹 Nome e Ruolo
+            TextField(
+              controller: _nameController,
+              decoration: InputDecoration(labelText: "Nome"),
+            ),
+            if (userData?['role'] == 'vendor')
+              TextField(
+                controller: _shopController,
+                decoration: InputDecoration(labelText: "Nome Negozio"),
               ),
+            SizedBox(height: 10),
+            Text("Email: ${userData?['email']}",
+                style: TextStyle(fontSize: 16)),
+            Text("Ruolo: ${userData?['role']}",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            SizedBox(height: 20),
+
+            // 🔹 Pulsante Modifica Dati
+            ElevatedButton(
+              onPressed: _updateProfile,
+              child: Text("Modifica Dati"),
             ),
             SizedBox(height: 20),
-            isEditing
-                ? Column(
+
+            // 🔹 Cambio Password
+            ExpansionTile(
+              title: Text("🔐 Cambia Password",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Column(
                     children: [
                       TextField(
-                          controller: _nameController,
-                          decoration: InputDecoration(labelText: 'Nome')),
+                        controller: _oldPasswordController,
+                        obscureText: true,
+                        decoration:
+                            InputDecoration(labelText: "Password Attuale"),
+                      ),
                       TextField(
-                          controller: _surnameController,
-                          decoration: InputDecoration(labelText: 'Cognome')),
-                      TextField(
-                          controller: _emailController,
-                          decoration: InputDecoration(labelText: 'Email')),
-                      TextField(
-                          controller: _phoneController,
-                          decoration: InputDecoration(labelText: 'Telefono')),
+                        controller: _newPasswordController,
+                        obscureText: true,
+                        decoration:
+                            InputDecoration(labelText: "Nuova Password"),
+                      ),
                       SizedBox(height: 10),
                       ElevatedButton(
-                        onPressed: _saveUserData,
-                        child: Text('Salva'),
-                      ),
-                      TextButton(
-                        onPressed: () => setState(() => isEditing = false),
-                        child: Text('Annulla'),
-                      ),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      Text('Nome: ${widget.userData['name']}',
-                          style: TextStyle(fontSize: 18)),
-                      Text('Cognome: ${widget.userData['surname']}',
-                          style: TextStyle(fontSize: 18)),
-                      Text('Email: ${widget.userData['email']}',
-                          style: TextStyle(fontSize: 18)),
-                      Text('Telefono: ${widget.userData['phone']}',
-                          style: TextStyle(fontSize: 18)),
-                      SizedBox(height: 20),
-                      ElevatedButton(
-                        onPressed: () => setState(() => isEditing = true),
-                        child: Text('Modifica Dati'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () =>
-                            setState(() => isChangingPassword = true),
-                        child: Text('Cambia Password'),
+                        onPressed: _changePassword,
+                        child: Text("Aggiorna Password"),
                       ),
                     ],
                   ),
-            if (isChangingPassword)
-              Column(
-                children: [
-                  TextField(
-                    controller: _currentPasswordController,
-                    decoration: InputDecoration(labelText: 'Password Attuale'),
-                    obscureText: true,
-                  ),
-                  TextField(
-                    controller: _newPasswordController,
-                    decoration: InputDecoration(labelText: 'Nuova Password'),
-                    obscureText: true,
-                  ),
-                  if (errorMessage != null)
-                    Text(errorMessage!, style: TextStyle(color: Colors.red)),
-                  SizedBox(height: 10),
-                  ElevatedButton(
-                    onPressed: _changePassword,
-                    child: Text('Salva Password'),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() => isChangingPassword = false),
-                    child: Text('Annulla'),
-                  ),
-                ],
-              ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: widget.logoutCallback,
+                ),
+              ],
+            ),
+
+            // 🔹 Logout
+            SizedBox(height: 30),
+            ElevatedButton.icon(
+              onPressed: _logout,
+              icon: Icon(Icons.logout, color: Colors.white),
+              label: Text("Logout"),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: Text('Logout', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),

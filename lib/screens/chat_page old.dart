@@ -10,8 +10,9 @@ class ChatListPage extends StatefulWidget {
   final bool isVendor;
   final String currentUser; // Nome dell'utente o negozio attuale
 
-  ChatListPage(
-      {required this.startChat,
+  const ChatListPage(
+      {super.key,
+      required this.startChat,
       required this.isVendor,
       required this.currentUser});
 
@@ -40,7 +41,7 @@ class _ChatListPageState extends State<ChatListPage> {
                     borderRadius: BorderRadius.circular(10)),
                 child: ListTile(
                   title: Text(widget.isVendor
-                      ? "Chat con Cliente: ${chatPartner}"
+                      ? "Chat con Cliente: $chatPartner"
                       : "Chat con $chatPartner"),
                   subtitle: Text(chatMessages[chatPartner]?.isNotEmpty == true
                       ? chatMessages[chatPartner]!.last
@@ -72,14 +73,15 @@ class ChatPage extends StatefulWidget {
   final String vendorName;
   final String currentUser;
 
-  ChatPage({required this.vendorName, required this.currentUser});
+  const ChatPage(
+      {super.key, required this.vendorName, required this.currentUser});
 
   @override
   _ChatPageState createState() => _ChatPageState();
 }
 
 class _ChatPageState extends State<ChatPage> {
-  TextEditingController _messageController = TextEditingController();
+  final TextEditingController _messageController = TextEditingController();
 
   void _sendMessage() {
     if (_messageController.text.isNotEmpty) {
@@ -90,12 +92,12 @@ class _ChatPageState extends State<ChatPage> {
         userChatMessages[widget.currentUser]!
             .putIfAbsent(widget.vendorName, () => []);
         userChatMessages[widget.currentUser]![widget.vendorName]!
-            .add("Tu: " + _messageController.text);
+            .add("Tu: ${_messageController.text}");
 
         userChatMessages[widget.vendorName]!
             .putIfAbsent(widget.currentUser, () => []);
         userChatMessages[widget.vendorName]![widget.currentUser]!
-            .add("${widget.currentUser}: " + _messageController.text);
+            .add("${widget.currentUser}: ${_messageController.text}");
       });
       _messageController.clear();
     }

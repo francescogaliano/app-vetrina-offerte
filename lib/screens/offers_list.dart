@@ -9,7 +9,8 @@ class OffersPage extends StatefulWidget {
   final DateTime? startDate;
   final DateTime? endDate;
 
-  OffersPage({
+  const OffersPage({
+    super.key,
     required this.startChat,
     required this.minDiscount,
     required this.maxDiscount,
@@ -32,11 +33,11 @@ class _OffersPageState extends State<OffersPage> {
   }
 
   void _loadOffers() {
-    List<Offer> allOffers = DatabaseService.getOffers();
+    //  List<Offer> allOffers = DatabaseService.getOffers();
 
     // Applichiamo i filtri
     setState(() {
-      filteredOffers = allOffers.where((offer) {
+/*       filteredOffers = allOffers.where((offer) {
         bool matchesCategory = widget.selectedCategory.isEmpty ||
             offer.category == widget.selectedCategory;
         bool matchesDiscount = offer.discount >= widget.minDiscount &&
@@ -49,7 +50,7 @@ class _OffersPageState extends State<OffersPage> {
         }
 
         return matchesCategory && matchesDiscount && matchesDate;
-      }).toList();
+      }).toList(); */
     });
   }
 

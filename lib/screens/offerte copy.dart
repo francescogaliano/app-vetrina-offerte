@@ -8,7 +8,8 @@ class OffersPage extends StatefulWidget {
   final DateTime? startDate;
   final DateTime? endDate;
 
-  OffersPage({
+  const OffersPage({
+    super.key,
     required this.startChat,
     required this.minDiscount,
     required this.maxDiscount,

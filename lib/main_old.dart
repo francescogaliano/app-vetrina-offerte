@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+/* import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 import 'screens/offers_list.dart';
@@ -443,4 +443,4 @@ class _MainScreenState extends State<MainScreen> {
       ),
     ];
   }
-}
+} */

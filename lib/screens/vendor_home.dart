@@ -1,52 +1,49 @@
 import 'package:flutter/material.dart';
 import 'vendor_offers.dart';
-import 'chat_page.dart'; // Importa la chat corretta
+import 'chat_list_page.dart';
 import 'profile.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'login_screen.dart';
+import '../services/auth_service.dart';
+import '../services/firebase_auth_service.dart';
+//import 'package:shared_preferences/shared_preferences.dart';
+//import 'dart:convert';
 
 class VendorHome extends StatefulWidget {
-  final Map<String, dynamic> userData;
+  //final Map<String, dynamic> userData;
+  final String uid;
+  final int initialPage; // Parametro per gestire la pagina iniziale
 
-  VendorHome({required this.userData});
+  const VendorHome({required this.uid, this.initialPage = 0, Key? key})
+      : super(key: key);
 
   @override
   _VendorHomeState createState() => _VendorHomeState();
 }
 
 class _VendorHomeState extends State<VendorHome> {
+  Map<String, dynamic>? userData;
+  bool isLoading = true;
   int _selectedIndex = 0;
+
   String loggedInVendor = "";
   Map<String, List<String>> chatMessages = {};
 
   @override
   void initState() {
     super.initState();
-    _loadVendorSession();
-    _loadVendorChats();
+    //_loadVendorSession();
+    //_loadVendorChats();
+    _fetchUserData();
   }
 
-  Future<void> _loadVendorSession() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? vendorData = prefs.getString('loggedInUser');
-    if (vendorData != null) {
-      Map<String, dynamic> vendorMap = jsonDecode(vendorData);
-      setState(() {
-        loggedInVendor = vendorMap['username']; // Nome del negozio
-      });
-    }
-  }
-
-  Future<void> _loadVendorChats() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? chatsJson = prefs.getString('chat_$loggedInVendor');
-    if (chatsJson != null) {
-      setState(() {
-        chatMessages = Map<String, List<String>>.from(json
-            .decode(chatsJson)
-            .map((key, value) => MapEntry(key, List<String>.from(value))));
-      });
-    }
+  Future<void> _fetchUserData() async {
+    Map<String, dynamic>? fetchedData =
+        await FirebaseAuthService().fetchUserData(widget.uid);
+    setState(() {
+      userData = fetchedData;
+      isLoading = false;
+      _selectedIndex = widget.initialPage; // Imposta la landing page
+    });
   }
 
   void _onItemTapped(int index) {
@@ -56,23 +53,35 @@ class _VendorHomeState extends State<VendorHome> {
   }
 
   void _logout() {
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.remove('loggedInUser');
-    });
-    Navigator.pushReplacementNamed(context, "/login");
+    AuthService().logout();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => LoginScreen()),
+    );
   }
 
-  List<Widget> _pages() {
-    return [
-      VendorOffers(), // Gestione offerte del venditore
-      ChatListPage(
-        startChat: (String
-            userName) {}, // Lasciato vuoto perché il venditore non avvia chat
-        isVendor: true,
-        currentUser:
-            loggedInVendor, // Passiamo il nome del venditore per filtrare le chat
+/*   void _startChat(String customerId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(
+          currentUserId: widget.uid, // L'UID del venditore
+          receiverUserId: customerId, // L'UID del cliente
+        ),
       ),
-      ProfilePage(userData: widget.userData, logoutCallback: _logout),
+    );
+  } */
+
+  List<Widget> _widgetOptions() {
+    if (userData == null) {
+      return [
+        Center(child: CircularProgressIndicator())
+      ]; // Attesa caricamento dati
+    }
+    return [
+      VendorOffers(uid: widget.uid),
+      ChatListPage(uid: widget.uid), // Nuova pagina lista chat
+      ProfilePage(uid: widget.uid),
     ];
   }
 
@@ -105,7 +114,12 @@ class _VendorHomeState extends State<VendorHome> {
               ],
             ),
           ),
-          Expanded(child: _pages()[_selectedIndex]),
+          //Expanded(child: _pages()[_selectedIndex]),
+          Expanded(
+            child: userData == null
+                ? Center(child: CircularProgressIndicator()) // Mostra loading
+                : _widgetOptions()[_selectedIndex],
+          ),
         ],
       ),
     );
