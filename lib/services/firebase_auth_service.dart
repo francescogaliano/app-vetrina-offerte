@@ -6,8 +6,7 @@ class FirebaseAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<User?> signIn(
-      String email, String password, BuildContext context) async {
+  Future<User?> signIn(String email, String password) async {
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
@@ -21,8 +20,8 @@ class FirebaseAuthService {
     }
   }
 
-  Future<User?> signUp(
-      String email, String password, BuildContext context) async {
+  /// 🔹 Registrazione per UTENTI normali
+  Future<User?> signUpUser(String email, String password, String name) async {
     try {
       UserCredential userCredential =
           await _auth.createUserWithEmailAndPassword(
@@ -30,15 +29,40 @@ class FirebaseAuthService {
         password: password,
       );
 
-      // Dopo la registrazione, memorizza i dati utente in Firestore
+      // Salva i dati utente in Firestore
       await _firestore.collection("users").doc(userCredential.user!.uid).set({
         "email": email,
-        "role": "user", // Predefinito, il ruolo può essere cambiato manualmente
+        "name": name,
+        "role": "user", // ✅ Gli utenti normali sono "user"
       });
 
       return userCredential.user;
     } catch (e) {
-      print("❌ Errore di registrazione: $e");
+      print("❌ Errore di registrazione utente: $e");
+      return null;
+    }
+  }
+
+  /// 🔹 Registrazione per VENDITORI
+  Future<User?> signUpVendor(
+      String email, String password, String shopName) async {
+    try {
+      UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Salva i dati venditore in Firestore
+      await _firestore.collection("users").doc(userCredential.user!.uid).set({
+        "email": email,
+        "shopName": shopName,
+        "role": "vendor", // ✅ I venditori hanno il ruolo "vendor"
+      });
+
+      return userCredential.user;
+    } catch (e) {
+      print("❌ Errore di registrazione venditore: $e");
       return null;
     }
   }
@@ -48,11 +72,19 @@ class FirebaseAuthService {
   }
 
   Future<Map<String, dynamic>?> fetchUserData(String uid) async {
-    DocumentSnapshot userDoc =
-        await _firestore.collection("users").doc(uid).get();
-    if (userDoc.exists) {
-      return userDoc.data() as Map<String, dynamic>;
+    try {
+      DocumentSnapshot userDoc =
+          await _firestore.collection("users").doc(uid).get();
+
+      if (userDoc.exists) {
+        return userDoc.data() as Map<String, dynamic>;
+      } else {
+        print("⚠️ Nessun documento trovato per UID: $uid");
+        return null;
+      }
+    } catch (e) {
+      print("❌ Errore nel recupero dati Firestore: $e");
+      return null;
     }
-    return null;
   }
 }

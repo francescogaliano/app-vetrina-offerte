@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/chat_service.dart';
 import 'chat_page.dart';
+import 'offer_details.dart';
 
 class VendorOffers extends StatefulWidget {
   final String uid; // L'UID del venditore
@@ -436,39 +437,58 @@ class _VendorOffersState extends State<VendorOffers> {
             itemBuilder: (context, index) {
               var offer = offers[index];
 
-              return Card(
-                elevation: 4,
-                margin: EdgeInsets.all(8),
-                child: ListTile(
-                  contentPadding: EdgeInsets.all(10),
-                  leading: offer['imageUrl'] != null
-                      ? Image.network(
-                          offer['imageUrl'],
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                        )
-                      : Icon(Icons.image_not_supported, size: 50),
-                  title: Text(
-                    offer['title'],
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("${offer['discount']}% di sconto"),
-                      Text("Categoria: ${offer['category']}"),
-                      Text(
-                        "Inizio: ${offer['startDate'] != null ? (offer['startDate'] as Timestamp).toDate() : 'Non disponibile'}",
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => OfferDetailsPage(
+                        offerId: offer.id,
+                        title: offer['title'],
+                        description: offer['description'],
+                        imageUrl: offer['imageUrl'] ??
+                            "https://via.placeholder.com/200",
+                        price: offer['discount'],
+                        vendorId:
+                            offer['vendorId'], // 🔹 Passiamo l'ID del venditore
                       ),
-                      Text(
-                        "Fine: ${offer['endDate'] != null ? (offer['endDate'] as Timestamp).toDate() : 'Non disponibile'}",
-                      ),
-                    ],
-                  ),
-                  trailing: IconButton(
-                    icon: Icon(Icons.delete, color: Colors.red),
-                    onPressed: () => _deleteOffer(offer.id),
+                    ),
+                  );
+                },
+                child: Card(
+                  elevation: 4,
+                  margin: EdgeInsets.all(8),
+                  child: ListTile(
+                    contentPadding: EdgeInsets.all(10),
+                    leading: offer['imageUrl'] != null
+                        ? Image.network(
+                            offer['imageUrl'],
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                          )
+                        : Icon(Icons.image_not_supported, size: 50),
+                    title: Text(
+                      offer['title'],
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("${offer['discount']}% di sconto"),
+                        Text("Categoria: ${offer['category']}"),
+                        Text(
+                          "Inizio: ${offer['startDate'] != null ? (offer['startDate'] as Timestamp).toDate() : 'Non disponibile'}",
+                        ),
+                        Text(
+                          "Fine: ${offer['endDate'] != null ? (offer['endDate'] as Timestamp).toDate() : 'Non disponibile'}",
+                        ),
+                      ],
+                    ),
+                    trailing: IconButton(
+                      icon: Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _deleteOffer(offer.id),
+                    ),
                   ),
                 ),
               );

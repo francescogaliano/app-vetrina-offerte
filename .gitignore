@@ -12,6 +12,9 @@
 .swiftpm/
 migrate_working_dir/
 
+android/app/google-services.json
+web/firebase-messaging-sw.js
+
 # IntelliJ related
 *.iml
 *.ipr
