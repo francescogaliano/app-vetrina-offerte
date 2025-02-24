@@ -1,22 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'edit_offer_screen.dart'; // 🔹 Importiamo la schermata di modifica
+import '../services/api_service.dart';
 
 class OfferDetailsPage extends StatefulWidget {
   final String offerId;
-  final String title;
-  final String description;
-  final String imageUrl;
-  final double price;
-  final String vendorId; // ID del venditore
 
   const OfferDetailsPage({
     required this.offerId,
-    required this.title,
-    required this.description,
-    required this.imageUrl,
-    required this.price,
-    required this.vendorId,
     Key? key,
   }) : super(key: key);
 
@@ -26,28 +18,78 @@ class OfferDetailsPage extends StatefulWidget {
 
 class _OfferDetailsPageState extends State<OfferDetailsPage> {
   String? currentUserId;
-  bool isVendor = false; // 🔹 Verifica se l'utente è il venditore
+  bool isVendor = false;
+  Map<String, dynamic>? offerData;
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _checkUserRole();
+    _initializeData();
   }
 
-  /// 🔹 Controlla se l'utente è il venditore
-  void _checkUserRole() async {
+  /// 🔹 Inizializza `currentUserId` e recupera i dettagli dell'offerta
+  Future<void> _initializeData() async {
+    await _checkUserRole(); // 🔹 Recupera prima l'ID dell'utente loggato
+    await _fetchOfferDetails(); // 🔹 Poi recupera i dettagli dell'offerta e verifica `isVendor`
+  }
+
+  /// 🔹 Recupera l'ID dell'utente loggato e aggiorna `isVendor`
+  Future<void> _checkUserRole() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      currentUserId = user.uid;
+    }
+  }
+
+  /// 🔹 Recupera i dettagli dell'offerta e aggiorna `isVendor`
+  Future<void> _fetchOfferDetails() async {
+    try {
+      Map<String, dynamic>? offer = await ApiService.getOffer(widget.offerId);
+
+      if (offer != null) {
+        setState(() {
+          offerData = offer;
+          _updateVendorStatus(); // 🔹 Controlla se l'utente è il venditore
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("❌ Errore nel recupero dell'offerta: $e");
+    }
+  }
+
+  void _updateVendorStatus() {
+    if (currentUserId != null &&
+        offerData != null &&
+        offerData?['vendorId'] is String) {
       setState(() {
-        currentUserId = user.uid;
-        isVendor = (currentUserId == widget.vendorId);
+        isVendor = currentUserId == offerData?['vendorId'];
       });
     }
   }
 
-  /// 🔹 Modifica l'offerta (DA IMPLEMENTARE)
-  void _editOffer() {
-    print("📝 Modifica offerta: ${widget.offerId}");
+  /// 🔹 Modifica l'offerta
+  void _editOffer() async {
+    bool? updated = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditOfferScreen(
+          offerId: widget.offerId,
+          title: offerData?['title'] ?? '',
+          category: offerData?['category'] ?? '',
+          description: offerData?['description'] ?? '',
+          discount: (offerData?['discount'] ?? 0).toDouble(),
+          imageUrl: offerData?['imageUrl'] ?? '',
+          startDate: offerData?['startDate'] ?? '',
+          endDate: offerData?['endDate'] ?? '',
+        ),
+      ),
+    );
+
+    if (updated == true) {
+      _fetchOfferDetails(); // 🔹 Ricarica i dati aggiornati dopo la modifica
+    }
   }
 
   /// 🔹 Elimina l'offerta
@@ -66,11 +108,18 @@ class _OfferDetailsPageState extends State<OfferDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (offerData == null) {
+      return Scaffold(
+        appBar: AppBar(title: Text("Dettagli Offerta")),
+        body: Center(
+            child: CircularProgressIndicator()), // 🔹 Mostra il caricamento
+      );
+    }
     return Scaffold(
-      backgroundColor: Colors.grey[100], // 🔹 Sfondo leggero
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title:
-            Text(widget.title, style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(offerData?['title'],
+            style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -79,9 +128,9 @@ class _OfferDetailsPageState extends State<OfferDetailsPage> {
           children: [
             // 🔹 Immagine dell'offerta
             Hero(
-              tag: widget.offerId, // Effetto di transizione fluida
+              tag: widget.offerId,
               child: Image.network(
-                widget.imageUrl,
+                offerData?['imageUrl'],
                 width: double.infinity,
                 height: 250,
                 fit: BoxFit.cover,
@@ -96,20 +145,38 @@ class _OfferDetailsPageState extends State<OfferDetailsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 🔹 Titolo dell'offerta
+                  // 🔹 Titolo
                   Text(
-                    widget.title,
+                    offerData?['title'],
                     style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 10),
 
-                  // 🔹 Prezzo dell'offerta
+                  // 🔹 Prezzo
                   Text(
-                    "€${widget.price.toStringAsFixed(2)}",
+                    "€${offerData?['discount'].toStringAsFixed(2)}",
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Colors.green),
+                  ),
+                  SizedBox(height: 15),
+
+                  // 🔹 Categoria
+                  Text(
+                    "Categoria: ${offerData?['category'] ?? "N/A"}",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 10),
+
+                  // 🔹 Date
+                  Text(
+                    "Inizio: ${offerData?['startDate'] is Timestamp ? (offerData?['startDate'] as Timestamp).toDate().toLocal().toIso8601String().split('T')[0] : (offerData?['startDate'] ?? "Nessuna data")}",
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  Text(
+                    "Fine: ${offerData?['endDate'] is Timestamp ? (offerData?['endDate'] as Timestamp).toDate().toLocal().toIso8601String().split('T')[0] : (offerData?['endDate'] ?? "Nessuna data")}",
+                    style: TextStyle(fontSize: 16),
                   ),
                   SizedBox(height: 15),
 
@@ -119,7 +186,7 @@ class _OfferDetailsPageState extends State<OfferDetailsPage> {
 
                   // 🔹 Descrizione
                   Text(
-                    widget.description,
+                    offerData?['description'],
                     style: TextStyle(fontSize: 16, height: 1.5),
                   ),
 

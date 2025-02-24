@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/database_service.dart';
 import 'chat_page.dart';
-import '../services/chat_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'offer_details.dart';
+import '../services/api_service.dart';
 
 class UserOffersPage extends StatefulWidget {
   final String uid;
@@ -16,13 +13,15 @@ class UserOffersPage extends StatefulWidget {
 }
 
 class _UserOffersPageState extends State<UserOffersPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  //final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<List<Map<String, dynamic>>>? _offersFuture;
   List<String> selectedCategories = [];
   double minDiscount = 0;
   double maxDiscount = 100;
   DateTime? startDate;
   DateTime? endDate;
-  final ChatService _chatService = ChatService();
+  //final ChatService _chatService = ChatService();
 
   final List<String> categories = [
     "Abbigliamento",
@@ -34,21 +33,15 @@ class _UserOffersPageState extends State<UserOffersPage> {
 
   bool isFiltered = false;
 
-/*   late TextEditingController minDiscountController;
-  late TextEditingController maxDiscountController;
- */
-/*   @override
+  @override
   void initState() {
     super.initState();
-    minDiscountController =
-        TextEditingController(text: minDiscount.toStringAsFixed(0));
-    maxDiscountController =
-        TextEditingController(text: maxDiscount.toStringAsFixed(0));
-    _getFilteredOffers();
-  } */
+    _offersFuture =
+        _getFilteredOffers(); // ✅ Carichiamo le offerte una sola volta all'avvio
+  }
 
   /// ✅ Recupera le offerte con o senza filtri
-  Stream<QuerySnapshot> _getFilteredOffers() {
+/*   Stream<QuerySnapshot> _getFilteredOffers() {
     Query query = _firestore.collection('offers');
 
     if (isFiltered) {
@@ -67,6 +60,26 @@ class _UserOffersPageState extends State<UserOffersPage> {
       }
     }
     return query.snapshots();
+  } */
+
+  Future<List<Map<String, dynamic>>> _getFilteredOffers() async {
+    print("🔄 Chiamata a _getFilteredOffers()");
+
+    List<Map<String, dynamic>>? offers = await ApiService.getOffers(
+      categories: selectedCategories.isNotEmpty ? selectedCategories : null,
+      minDiscount: minDiscount,
+      maxDiscount: maxDiscount,
+      startDate: startDate != null ? startDate!.toIso8601String() : null,
+      endDate: endDate != null ? endDate!.toIso8601String() : null,
+    );
+
+    if (offers != null) {
+      print("✅ Offerte ricevute: ${offers.length}");
+      return offers;
+    } else {
+      print("❌ Nessuna offerta ricevuta.");
+      return [];
+    }
   }
 
   /// **🔹 Recupera le offerte dal database**
@@ -102,14 +115,14 @@ class _UserOffersPageState extends State<UserOffersPage> {
   } */
 
   /// ✅ Mostra la finestra per i filtri
-  void _showFilterDialog() {
+  Future<void> _showFilterDialog() async {
     double tempMinDiscount = minDiscount;
     double tempMaxDiscount = maxDiscount;
     List<String> tempSelectedCategories = List.from(selectedCategories);
     DateTime? tempStartDate = startDate;
     DateTime? tempEndDate = endDate;
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
@@ -283,6 +296,10 @@ class _UserOffersPageState extends State<UserOffersPage> {
                       isFiltered = true;
                     });
                     Navigator.of(context).pop();
+                    setState(() {
+                      _offersFuture =
+                          _getFilteredOffers(); // ✅ Aggiorniamo le offerte dopo il filtro
+                    });
                   },
                 ),
               ],
@@ -293,13 +310,13 @@ class _UserOffersPageState extends State<UserOffersPage> {
     );
   }
 
-  String _generateChatId(String userId1, String userId2) {
+  /*  String _generateChatId(String userId1, String userId2) {
     List<String> ids = [userId1, userId2];
     ids.sort(); // Ordina gli ID per avere sempre la stessa chat tra due utenti
     return ids.join("_");
   }
-
-  Future<String> _createChatIfNotExists(String userId, String vendorId) async {
+ */
+  /* Future<String> _createChatIfNotExists(String userId, String vendorId) async {
     String chatId = _getChatId(userId, vendorId);
     DocumentSnapshot chatDoc =
         await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
@@ -315,7 +332,7 @@ class _UserOffersPageState extends State<UserOffersPage> {
 
     return chatId;
   }
-
+ */
   void _startChat(String vendorId) {
     Navigator.push(
       context,
@@ -340,10 +357,18 @@ class _UserOffersPageState extends State<UserOffersPage> {
     );
   } */
 
-  String _getChatId(String user1, String user2) {
+  /*  String _getChatId(String user1, String user2) {
     List<String> ids = [user1, user2];
     ids.sort(); // Ordina per garantire sempre lo stesso ID
     return ids.join('_');
+  } */
+
+  /// 🔹 Converte un `Timestamp` in una `String` leggibile
+  String _convertTimestamp(dynamic date) {
+    if (date is String) {
+      return date.split("T")[0]; // 🔹 YYYY-MM-DD
+    }
+    return "Non disponibile";
   }
 
   @override
@@ -354,22 +379,29 @@ class _UserOffersPageState extends State<UserOffersPage> {
         actions: [
           IconButton(
             icon: Icon(Icons.filter_list),
-            onPressed: _showFilterDialog,
+            onPressed: () async {
+              print("🔹 Bottone filtro premuto - Chiamo _showFilterDialog()");
+              await _showFilterDialog();
+              setState(() {
+                _offersFuture =
+                    _getFilteredOffers(); // ✅ Aggiorniamo dopo il filtro
+              });
+            },
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _getFilteredOffers(),
+      body: FutureBuilder<List<Map<String, dynamic>>?>(
+        future: _offersFuture, // 🔹 Ora usiamo FastAPI
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return Center(child: Text("Nessuna offerta disponibile"));
           }
 
-          var offers = snapshot.data!.docs;
+          var offers = snapshot.data!;
 
           return ListView.builder(
             itemCount: offers.length,
@@ -382,14 +414,7 @@ class _UserOffersPageState extends State<UserOffersPage> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => OfferDetailsPage(
-                        offerId: offer.id,
-                        title: offer['title'],
-                        description: offer['description'],
-                        imageUrl: offer['imageUrl'] ??
-                            "https://via.placeholder.com/200",
-                        price: offer['discount'],
-                        vendorId:
-                            offer['vendorId'], // 🔹 Passiamo l'ID del venditore
+                        offerId: offer["id"],
                       ),
                     ),
                   );
@@ -399,32 +424,33 @@ class _UserOffersPageState extends State<UserOffersPage> {
                   margin: EdgeInsets.all(8),
                   child: ListTile(
                     contentPadding: EdgeInsets.all(10),
-                    leading: offer['imageUrl'] != null
+                    leading: offer["imageUrl"] != null &&
+                            offer["imageUrl"].isNotEmpty
                         ? Image.network(
-                            offer['imageUrl'],
+                            offer["imageUrl"],
                             width: 60,
                             height: 60,
                             fit: BoxFit.cover,
                           )
                         : Icon(Icons.image_not_supported, size: 50),
                     title: Text(
-                      offer['title'],
+                      offer["title"] ?? "Senza titolo",
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("${offer['discount']}% di sconto"),
-                        Text("Categoria: ${offer['category']}"),
+                        Text("${offer["discount"] ?? 0}% di sconto"),
+                        Text("Categoria: ${offer["category"] ?? "N/A"}"),
                         Text(
-                          "Inizio: ${offer['startDate'] != null ? (offer['startDate'] as Timestamp).toDate() : 'Non disponibile'}",
+                          "Inizio: ${_convertTimestamp(offer["startDate"])}",
                         ),
                         Text(
-                          "Fine: ${offer['endDate'] != null ? (offer['endDate'] as Timestamp).toDate() : 'Non disponibile'}",
+                          "Fine: ${_convertTimestamp(offer["endDate"])}",
                         ),
                         SizedBox(height: 10),
                         ElevatedButton(
-                          onPressed: () => _startChat(offer['vendorId']),
+                          onPressed: () => _startChat(offer["vendorId"]),
                           child: Text("Chatta con il venditore"),
                         ),
                       ],

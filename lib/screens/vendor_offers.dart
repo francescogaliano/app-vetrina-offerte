@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/chat_service.dart';
-import 'chat_page.dart';
+//import '../services/chat_service.dart';
+//import 'chat_page.dart';
 import 'offer_details.dart';
+import '../services/api_service.dart';
 
 class VendorOffers extends StatefulWidget {
   final String uid; // L'UID del venditore
@@ -14,11 +15,11 @@ class VendorOffers extends StatefulWidget {
 }
 
 class _VendorOffersState extends State<VendorOffers> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final ChatService _chatService = ChatService();
+  //final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  //final ChatService _chatService = ChatService();
   List<String> selectedCategories =
       []; // Lista per la selezione multipla delle categorie
-  // String selectedCategory = "";
+  List<Map<String, dynamic>> vendorOffers = [];
   bool isFiltered = false;
   double minDiscount = 0;
   double maxDiscount = 100;
@@ -32,52 +33,47 @@ class _VendorOffersState extends State<VendorOffers> {
     "Sport"
   ];
 
-/*   /// **🔹 Recupera le offerte del venditore corrente**
-  Stream<QuerySnapshot> _getVendorOffers() {
-    return _firestore
-        .collection('offers')
-        .where('vendorId', isEqualTo: widget.uid)
-        .snapshots();
-  } */
+  @override
+  void initState() {
+    super.initState();
+    _getVendorOffers();
+  }
 
-  Stream<QuerySnapshot> _getVendorOffers() {
-    Query query = _firestore
-        .collection('offers')
-        .where('vendorId', isEqualTo: widget.uid);
+  /// 🔹 Recupera le offerte del venditore da FastAPI
+  Future<void> _getVendorOffers() async {
+    print("🔄 Chiamata a _getVendorOffers()");
 
-    if (selectedCategories.isNotEmpty) {
-      query = query.where('category', whereIn: selectedCategories);
+    List<Map<String, dynamic>>? offers = await ApiService.getOffers(
+      vendorId: widget.uid,
+      categories: selectedCategories.isNotEmpty ? selectedCategories : null,
+      minDiscount: minDiscount,
+      maxDiscount: maxDiscount,
+      startDate: startDate != null ? startDate!.toIso8601String() : null,
+      endDate: endDate != null ? endDate!.toIso8601String() : null,
+    );
+
+    if (offers != null) {
+      print("✅ Offerte ricevute: ${offers.length}");
+      setState(() {
+        vendorOffers = offers;
+      });
+    } else {
+      print("❌ Nessuna offerta ricevuta.");
     }
-
-    if (minDiscount >= 0 || maxDiscount <= 100) {
-      query = query
-          .orderBy('discount')
-          .where('discount', isGreaterThanOrEqualTo: minDiscount);
-      query = query.where('discount', isLessThanOrEqualTo: maxDiscount);
-    }
-
-    if (startDate != null) {
-      query = query.where('startDate',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(startDate!));
-    }
-
-    if (endDate != null) {
-      query = query.where('endDate',
-          isLessThanOrEqualTo: Timestamp.fromDate(endDate!));
-    }
-
-    return query.snapshots();
+    print("🔄 Chiamata a _getVendorOffers() - FINE");
   }
 
   /// ✅ Mostra la finestra per i filtri
-  void _showFilterDialog() {
+  Future<void> _showFilterDialog() async {
+    print("🔄 Entrato in _showFilterDialog()"); // 🔹 DEBUG
+
     double tempMinDiscount = minDiscount;
     double tempMaxDiscount = maxDiscount;
     List<String> tempSelectedCategories = List.from(selectedCategories);
     DateTime? tempStartDate = startDate;
     DateTime? tempEndDate = endDate;
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
@@ -242,6 +238,9 @@ class _VendorOffersState extends State<VendorOffers> {
                 ElevatedButton(
                   child: Text("Applica"),
                   onPressed: () {
+                    print(
+                        "✅ FILTRI APPLICATI - STO PER CHIUDERE IL DIALOGO"); // 🔹 DEBUG
+
                     setState(() {
                       selectedCategories = tempSelectedCategories;
                       minDiscount = tempMinDiscount;
@@ -250,7 +249,12 @@ class _VendorOffersState extends State<VendorOffers> {
                       endDate = tempEndDate;
                       isFiltered = true;
                     });
+
                     Navigator.of(context).pop();
+                    print(
+                        "✅ DIALOGO CHIUSO - ORA CHIAMO _getVendorOffers()"); // 🔹 DEBUG
+
+                    _getVendorOffers();
                   },
                 ),
               ],
@@ -259,6 +263,7 @@ class _VendorOffersState extends State<VendorOffers> {
         );
       },
     );
+    print("✅ USCITO DA _showFilterDialog()"); // 🔹 DEBUG
   }
 
   /// **🔹 Mostra il modulo per aggiungere un'offerta**
@@ -363,7 +368,7 @@ class _VendorOffersState extends State<VendorOffers> {
               child: Text("Aggiungi"),
               onPressed: () async {
                 try {
-                  await _firestore.collection('offers').add({
+                  /* await _firestore.collection('offers').add({
                     'title': titleController.text.trim(),
                     'description': descriptionController.text.trim(),
                     'category': selectedCategory,
@@ -378,7 +383,25 @@ class _VendorOffersState extends State<VendorOffers> {
                     'endDate':
                         endDate != null ? Timestamp.fromDate(endDate!) : null,
                     'timestamp': FieldValue.serverTimestamp(),
-                  });
+                  }); */
+                  await ApiService.createOffer(
+                      titleController.text.trim(), //title
+                      descriptionController.text.trim(), //description
+                      selectedCategory, //category
+
+                      double.tryParse(discountController.text) ?? 0, //discount
+                      imageUrlController.text.trim().isNotEmpty
+                          ? imageUrlController.text.trim()
+                          : "", //imageUrl
+                      startDate != null
+                          ? startDate!.toIso8601String()
+                          : "", //startDate
+                      endDate != null
+                          ? endDate!.toIso8601String()
+                          : "", //endDate
+                      widget.uid //vendorId
+
+                      );
                   Navigator.of(context).pop();
                 } catch (e) {
                   print("❌ Errore nell'aggiunta dell'offerta: $e");
@@ -391,20 +414,12 @@ class _VendorOffersState extends State<VendorOffers> {
     );
   }
 
-  /// **🔹 Elimina un'offerta**
-  Future<void> _deleteOffer(String offerId) async {
-    try {
-      await _firestore.collection('offers').doc(offerId).delete();
-    } catch (e) {
-      print("❌ Errore nell'eliminazione dell'offerta: $e");
+  /// 🔹 Converte un `Timestamp` in una `String` leggibile
+  String _convertTimestamp(dynamic date) {
+    if (date is String) {
+      return date.split("T")[0]; // 🔹 YYYY-MM-DD
     }
-  }
-
-  Stream<QuerySnapshot> _getCustomerChats() {
-    return _firestore
-        .collection('chats')
-        .where('participants', arrayContains: widget.uid)
-        .snapshots();
+    return "Non disponibile";
   }
 
   @override
@@ -415,87 +430,73 @@ class _VendorOffersState extends State<VendorOffers> {
         actions: [
           IconButton(
             icon: Icon(Icons.filter_list),
-            onPressed: _showFilterDialog,
+            onPressed: () async {
+              print(
+                  "🔹 Bottone filtro premuto - Chiamo _showFilterDialog()"); // 🔹 DEBUG
+              await _showFilterDialog();
+              _getVendorOffers(); // 🔹 Aggiorniamo le offerte dopo il filtro
+            },
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _getVendorOffers(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
-          }
+      body: vendorOffers.isEmpty
+          ? Center(child: Text("Nessuna offerta disponibile"))
+          : ListView.builder(
+              itemCount: vendorOffers.length,
+              itemBuilder: (context, index) {
+                var offer = vendorOffers[index];
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(child: Text("Nessuna offerta disponibile"));
-          }
-
-          var offers = snapshot.data!.docs;
-
-          return ListView.builder(
-            itemCount: offers.length,
-            itemBuilder: (context, index) {
-              var offer = offers[index];
-
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => OfferDetailsPage(
-                        offerId: offer.id,
-                        title: offer['title'],
-                        description: offer['description'],
-                        imageUrl: offer['imageUrl'] ??
-                            "https://via.placeholder.com/200",
-                        price: offer['discount'],
-                        vendorId:
-                            offer['vendorId'], // 🔹 Passiamo l'ID del venditore
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => OfferDetailsPage(
+                          offerId: offer["id"],
+                        ),
+                      ),
+                    );
+                  },
+                  child: Card(
+                    elevation: 4,
+                    margin: EdgeInsets.all(8),
+                    child: ListTile(
+                      contentPadding: EdgeInsets.all(10),
+                      leading: offer['image_url'] != null &&
+                              offer['image_url'].isNotEmpty
+                          ? Image.network(
+                              offer['image_url'],
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                            )
+                          : Icon(Icons.image_not_supported, size: 50),
+                      title: Text(
+                        offer['title'] ?? "Senza titolo",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("${offer['discount'] ?? 0}% di sconto"),
+                          Text("Categoria: ${offer['category'] ?? "N/A"}"),
+                          Text(
+                              "Inizio: ${_convertTimestamp(offer['startDate'])}"),
+                          Text("Fine: ${_convertTimestamp(offer['endDate'])}"),
+                        ],
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(Icons.delete, color: Colors.red),
+                        onPressed: () async {
+                          await ApiService.deleteOffer(offer["id"]);
+                          _getVendorOffers();
+                        },
                       ),
                     ),
-                  );
-                },
-                child: Card(
-                  elevation: 4,
-                  margin: EdgeInsets.all(8),
-                  child: ListTile(
-                    contentPadding: EdgeInsets.all(10),
-                    leading: offer['imageUrl'] != null
-                        ? Image.network(
-                            offer['imageUrl'],
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
-                          )
-                        : Icon(Icons.image_not_supported, size: 50),
-                    title: Text(
-                      offer['title'],
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("${offer['discount']}% di sconto"),
-                        Text("Categoria: ${offer['category']}"),
-                        Text(
-                          "Inizio: ${offer['startDate'] != null ? (offer['startDate'] as Timestamp).toDate() : 'Non disponibile'}",
-                        ),
-                        Text(
-                          "Fine: ${offer['endDate'] != null ? (offer['endDate'] as Timestamp).toDate() : 'Non disponibile'}",
-                        ),
-                      ],
-                    ),
-                    trailing: IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteOffer(offer.id),
-                    ),
                   ),
-                ),
-              );
-            },
-          );
-        },
-      ),
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddOfferDialog,
         child: Icon(Icons.add),
