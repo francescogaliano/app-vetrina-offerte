@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+//import 'package:cloud_firestore/cloud_firestore.dart';
 //import '../services/chat_service.dart';
 //import 'chat_page.dart';
 import 'offer_details.dart';
 import '../services/api_service.dart';
+import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:typed_data';
 
 class VendorOffers extends StatefulWidget {
   final String uid; // L'UID del venditore
@@ -15,10 +20,26 @@ class VendorOffers extends StatefulWidget {
 }
 
 class _VendorOffersState extends State<VendorOffers> {
+  void _openCreateOfferSheet() async {
+    bool? offerCreated = await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => CreateOfferSheet(vendorId: widget.uid),
+    );
+
+    if (offerCreated == true) {
+      setState(() {}); // Ricarica la lista delle offerte
+    }
+  }
+
   //final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   //final ChatService _chatService = ChatService();
   List<String> selectedCategories =
       []; // Lista per la selezione multipla delle categorie
+
+  List<File> selectedImages = [];
+  File? coverImage; // L'immagine selezionata come copertina
+
   List<Map<String, dynamic>> vendorOffers = [];
   bool isFiltered = false;
   double minDiscount = 0;
@@ -33,9 +54,18 @@ class _VendorOffersState extends State<VendorOffers> {
     "Sport"
   ];
 
+  List<String> imageUrls = [];
+  final picker = ImagePicker();
+
   @override
   void initState() {
     super.initState();
+    _getVendorOffers(); // ✅ Carichiamo all'avvio
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     _getVendorOffers();
   }
 
@@ -61,6 +91,76 @@ class _VendorOffersState extends State<VendorOffers> {
       print("❌ Nessuna offerta ricevuta.");
     }
     print("🔄 Chiamata a _getVendorOffers() - FINE");
+  }
+
+/*   Future<void> _pickImages() async {
+    final List<XFile>? pickedFiles = await _picker.pickMultiImage();
+    if (pickedFiles != null && pickedFiles.isNotEmpty) {
+      setState(() {
+        selectedImages = pickedFiles.map((file) => File(file.path)).toList();
+        if (coverImage == null && selectedImages.isNotEmpty) {
+          coverImage = selectedImages
+              .first; // Imposta la prima immagine come copertina di default
+        }
+      });
+    }
+  }
+
+  Future<void> _uploadImages(String offerId) async {
+    List<Map<String, dynamic>> uploadedImages = [];
+
+    for (var image in selectedImages) {
+      Map<String, dynamic>? uploadedImage =
+          await ApiService.uploadOfferImage(offerId, image);
+      if (uploadedImage != null) {
+        uploadedImages.add(uploadedImage);
+      }
+    }
+
+    // Aggiorna l'offerta con la lista delle immagini
+    await ApiService.updateOffer(offerId, {"images": uploadedImages});
+  }
+ */
+  Future<void> _setCoverImage(String offerId, String imageUrl) async {
+    await ApiService.setCoverImage(offerId, imageUrl);
+    setState(() {
+      var offer = vendorOffers.firstWhere((offer) => offer["id"] == offerId);
+      for (var img in offer["images"]) {
+        img["is_cover"] = img["url"] == imageUrl;
+      }
+    });
+  }
+
+  String? _getCoverImageUrl(Map<String, dynamic> offer) {
+    if (offer["images"] != null && (offer["images"] as List).isNotEmpty) {
+      var imagesList = offer["images"] as List;
+      var coverImage = imagesList.firstWhere(
+        (img) => img["is_cover"] == true,
+        orElse: () =>
+            imagesList.first, // Se non c'è copertina, prende la prima immagine
+      );
+      String imageUrl = coverImage["url"];
+
+      // 🔹 Stampiamo il valore per vedere il formato
+      print("🔍 DEBUG: URL Grezzo -> $imageUrl");
+      print("🔍 DEBUG: Tipo di URL -> ${imageUrl.runtimeType}");
+
+      // 🔹 Se ha doppi apici, li rimuoviamo
+      if (imageUrl.startsWith('"') && imageUrl.endsWith('"')) {
+        imageUrl = imageUrl.substring(1, imageUrl.length - 1);
+        print("✅ Corretto URL: $imageUrl");
+      }
+      // 🔹 Se l'URL è in formato `gs://`, lo convertiamo in un URL HTTP
+      if (imageUrl.startsWith("gs://")) {
+        imageUrl = imageUrl.replaceFirst(
+            "gs://", "https://firebasestorage.googleapis.com/v0/b/");
+        imageUrl = imageUrl.replaceFirst("/o/", "/o?alt=media&token=");
+      }
+      print("✅ Copertina trovata (URL Convertito): $imageUrl");
+      return imageUrl;
+    }
+    print("❌ Nessuna immagine trovata per l'offerta ${offer["offer_id"]}");
+    return null;
   }
 
   /// ✅ Mostra la finestra per i filtri
@@ -266,154 +366,6 @@ class _VendorOffersState extends State<VendorOffers> {
     print("✅ USCITO DA _showFilterDialog()"); // 🔹 DEBUG
   }
 
-  /// **🔹 Mostra il modulo per aggiungere un'offerta**
-  void _showAddOfferDialog() {
-    final TextEditingController titleController = TextEditingController();
-    final TextEditingController descriptionController = TextEditingController();
-    final TextEditingController discountController = TextEditingController();
-    final TextEditingController imageUrlController = TextEditingController();
-
-    String selectedCategory = categories.first;
-
-    DateTime? startDate;
-    DateTime? endDate;
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Aggiungi Nuova Offerta"),
-          content: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: InputDecoration(labelText: "Titolo"),
-                ),
-                TextField(
-                  controller: descriptionController,
-                  decoration: InputDecoration(labelText: "Descrizione"),
-                ),
-                DropdownButtonFormField(
-                  value: selectedCategory,
-                  items: categories.map((String category) {
-                    return DropdownMenuItem(
-                      value: category,
-                      child: Text(category),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      selectedCategory = value.toString();
-                    });
-                  },
-                  decoration: InputDecoration(labelText: "Categoria"),
-                ),
-                TextField(
-                  controller: discountController,
-                  decoration: InputDecoration(labelText: "Sconto (%)"),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: imageUrlController,
-                  decoration: InputDecoration(labelText: "URL Immagine"),
-                ),
-                ListTile(
-                  title: Text(startDate == null
-                      ? "Seleziona data di inizio"
-                      : "Inizio: ${startDate!.toLocal()}"),
-                  trailing: Icon(Icons.calendar_today),
-                  onTap: () async {
-                    DateTime? picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        startDate = picked;
-                      });
-                    }
-                  },
-                ),
-                ListTile(
-                  title: Text(endDate == null
-                      ? "Seleziona data di fine"
-                      : "Fine: ${endDate!.toLocal()}"),
-                  trailing: Icon(Icons.calendar_today),
-                  onTap: () async {
-                    DateTime? picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        endDate = picked;
-                      });
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: Text("Annulla"),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            ElevatedButton(
-              child: Text("Aggiungi"),
-              onPressed: () async {
-                try {
-                  /* await _firestore.collection('offers').add({
-                    'title': titleController.text.trim(),
-                    'description': descriptionController.text.trim(),
-                    'category': selectedCategory,
-                    'discount': int.tryParse(discountController.text) ?? 0,
-                    'imageUrl': imageUrlController.text.trim().isNotEmpty
-                        ? imageUrlController.text.trim()
-                        : null, // Se non c'è immagine, imposta `null`
-                    'vendorId': widget.uid,
-                    'startDate': startDate != null
-                        ? Timestamp.fromDate(startDate!)
-                        : null,
-                    'endDate':
-                        endDate != null ? Timestamp.fromDate(endDate!) : null,
-                    'timestamp': FieldValue.serverTimestamp(),
-                  }); */
-                  await ApiService.createOffer(
-                      titleController.text.trim(), //title
-                      descriptionController.text.trim(), //description
-                      selectedCategory, //category
-
-                      double.tryParse(discountController.text) ?? 0, //discount
-                      imageUrlController.text.trim().isNotEmpty
-                          ? imageUrlController.text.trim()
-                          : "", //imageUrl
-                      startDate != null
-                          ? startDate!.toIso8601String()
-                          : "", //startDate
-                      endDate != null
-                          ? endDate!.toIso8601String()
-                          : "", //endDate
-                      widget.uid //vendorId
-
-                      );
-                  Navigator.of(context).pop();
-                } catch (e) {
-                  print("❌ Errore nell'aggiunta dell'offerta: $e");
-                }
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   /// 🔹 Converte un `Timestamp` in una `String` leggibile
   String _convertTimestamp(dynamic date) {
     if (date is String) {
@@ -445,7 +397,9 @@ class _VendorOffersState extends State<VendorOffers> {
               itemCount: vendorOffers.length,
               itemBuilder: (context, index) {
                 var offer = vendorOffers[index];
-
+                String? coverImageUrl = _getCoverImageUrl(offer);
+                print(
+                    "🔍 UI - Offerta ${offer["id"]} - Immagine di copertina: $coverImageUrl");
                 return GestureDetector(
                   onTap: () {
                     Navigator.push(
@@ -455,42 +409,108 @@ class _VendorOffersState extends State<VendorOffers> {
                           offerId: offer["id"],
                         ),
                       ),
-                    );
+                    ).then((_) =>
+                        _getVendorOffers()); // ✅ Aggiorna la lista appena si torna indietro
                   },
                   child: Card(
                     elevation: 4,
                     margin: EdgeInsets.all(8),
-                    child: ListTile(
-                      contentPadding: EdgeInsets.all(10),
-                      leading: offer['image_url'] != null &&
-                              offer['image_url'].isNotEmpty
-                          ? Image.network(
-                              offer['image_url'],
-                              width: 60,
-                              height: 60,
-                              fit: BoxFit.cover,
-                            )
-                          : Icon(Icons.image_not_supported, size: 50),
-                      title: Text(
-                        offer['title'] ?? "Senza titolo",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Column(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("${offer['discount'] ?? 0}% di sconto"),
-                          Text("Categoria: ${offer['category'] ?? "N/A"}"),
-                          Text(
-                              "Inizio: ${_convertTimestamp(offer['startDate'])}"),
-                          Text("Fine: ${_convertTimestamp(offer['endDate'])}"),
+                          // **Mostra SOLO l'immagine di copertina**
+                          coverImageUrl != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: CachedNetworkImage(
+                                    imageUrl: coverImageUrl,
+                                    width: 150,
+                                    height: 150,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => Center(
+                                        child: CircularProgressIndicator()),
+                                    errorWidget: (context, url, error) {
+                                      print(
+                                          "❌ Errore nel caricamento dell'immagine: $error");
+                                      return Container(
+                                        width: 150,
+                                        height: 150,
+                                        color: Colors.grey[300],
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.image_not_supported,
+                                                size: 50, color: Colors.red),
+                                            SizedBox(height: 8),
+                                            Text("Errore nel caricamento",
+                                                style: TextStyle(
+                                                    color: Colors.red)),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                )
+                              : Container(
+                                  width: 150,
+                                  height: 150,
+                                  color: Colors.grey[300],
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.image_not_supported,
+                                          size: 50, color: Colors.grey),
+                                      SizedBox(height: 8),
+                                      Text("Nessuna immagine disponibile"),
+                                    ],
+                                  ),
+                                ),
+                          SizedBox(width: 10), // 🔹 Spazio tra immagine e testo
+                          // 🔹 Testo a destra
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  offer['title'] ?? "Senza titolo",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                SizedBox(height: 5),
+                                Text(
+                                  "${offer['discount'] ?? 0}% di sconto",
+                                  style: TextStyle(
+                                      fontSize: 16, color: Colors.green),
+                                ),
+                                SizedBox(height: 5),
+                                Text(
+                                  "Categoria: ${offer['category'] ?? "N/A"}",
+                                  style: TextStyle(
+                                      fontSize: 14, color: Colors.grey[700]),
+                                ),
+                                SizedBox(height: 5),
+                                Text(
+                                    "Inizio: ${_convertTimestamp(offer['startDate'])}"),
+                                Text(
+                                    "Fine: ${_convertTimestamp(offer['endDate'])}"),
+                              ],
+                            ),
+                          ),
+
+                          IconButton(
+                            icon: Icon(Icons.delete, color: Colors.red),
+                            onPressed: () async {
+                              await ApiService.deleteOffer(offer["id"]);
+                              _getVendorOffers();
+                            },
+                          ),
                         ],
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(Icons.delete, color: Colors.red),
-                        onPressed: () async {
-                          await ApiService.deleteOffer(offer["id"]);
-                          _getVendorOffers();
-                        },
                       ),
                     ),
                   ),
@@ -498,8 +518,251 @@ class _VendorOffersState extends State<VendorOffers> {
               },
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddOfferDialog,
+        onPressed: _openCreateOfferSheet,
         child: Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class CreateOfferSheet extends StatefulWidget {
+  final String vendorId;
+
+  const CreateOfferSheet({Key? key, required this.vendorId}) : super(key: key);
+
+  @override
+  _CreateOfferSheetState createState() => _CreateOfferSheetState();
+}
+
+class _CreateOfferSheetState extends State<CreateOfferSheet> {
+  final TextEditingController titleController = TextEditingController();
+  final TextEditingController descriptionController = TextEditingController();
+  final TextEditingController discountController = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+  List<XFile> selectedImages = [];
+  XFile? coverImage;
+  List<Uint8List?> imageBytes = []; // Per Flutter Web
+  DateTime? startDate;
+  DateTime? endDate;
+
+  final List<String> categories = [
+    "Abbigliamento",
+    "Elettronica",
+    "Cibo",
+    "Gioielli",
+    "Sport"
+  ];
+  late String selectedCategory;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedCategory = categories.first;
+  }
+
+  Future<void> _pickImages() async {
+    final List<XFile>? pickedFiles = await _picker.pickMultiImage();
+    if (pickedFiles != null && pickedFiles.isNotEmpty) {
+      setState(() {
+        selectedImages = pickedFiles;
+        coverImage ??= selectedImages.first;
+      });
+
+      if (kIsWeb) {
+        // Se siamo su Web, convertiamo le immagini in byte
+        List<Uint8List?> byteList = await Future.wait(
+          selectedImages.map((file) => file.readAsBytes()),
+        );
+        setState(() {
+          imageBytes = byteList;
+        });
+      }
+    }
+  }
+
+  Future<void> _uploadImages(String offerId) async {
+    List<Map<String, dynamic>> uploadedImages = [];
+
+    for (var image in selectedImages) {
+      Map<String, dynamic>? uploadedImage =
+          await ApiService.uploadOfferImage(offerId, image);
+      if (uploadedImage != null) {
+        // **Se questa immagine è la copertina, imposta `is_cover: true`**
+        uploadedImage["is_cover"] = coverImage == image;
+        uploadedImages.add(uploadedImage);
+      }
+    }
+
+    await ApiService.updateOffer(offerId, {"images": uploadedImages});
+  }
+
+  Future<void> _createOffer() async {
+    String title = titleController.text.trim();
+    String description = descriptionController.text.trim();
+    double discount = double.tryParse(discountController.text) ?? 0.0;
+
+    if (title.isEmpty || description.isEmpty || selectedImages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text("Compila tutti i campi e seleziona almeno un'immagine")),
+      );
+      return;
+    }
+
+    // **1️⃣ Crea offerta SENZA immagini**
+    Map<String, dynamic>? newOffer = await ApiService.createOffer(
+        title, //title
+        description, //description
+        selectedCategory, //category
+        discount, //discount
+        "", //imageUrl
+        startDate != null ? startDate!.toIso8601String() : "", //startDate
+        endDate != null ? endDate!.toIso8601String() : "", //endDate
+        widget.vendorId //vendorId
+        );
+
+    if (newOffer != null && newOffer["offer_id"] != null) {
+      // **2️⃣ Carica immagini**
+      await _uploadImages(newOffer["offer_id"]);
+
+      // **3️⃣ Imposta la copertina**
+      if (coverImage != null) {
+        await ApiService.setCoverImage(newOffer["offer_id"], coverImage!.path);
+      }
+
+      Navigator.of(context)
+          .pop(true); // Chiude la Bottom Sheet e segnala il successo
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("Crea Nuova Offerta",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _pickImages,
+                child: Text("Seleziona Immagini"),
+              ),
+              SizedBox(height: 10),
+              if (selectedImages.isNotEmpty) ...[
+                Text("Seleziona immagine di copertina"),
+                SizedBox(
+                  height: 100,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: selectedImages.length,
+                    itemBuilder: (context, index) {
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            coverImage = selectedImages[index];
+                          });
+                        },
+                        child: Stack(
+                          children: [
+                            kIsWeb
+                                ? Image.memory(imageBytes[index]!,
+                                    width: 100, height: 100, fit: BoxFit.cover)
+                                : Image.file(File(selectedImages[index].path),
+                                    width: 100, height: 100, fit: BoxFit.cover),
+                            if (coverImage == selectedImages[index])
+                              Positioned(
+                                top: 5,
+                                right: 5,
+                                child: Icon(Icons.star, color: Colors.yellow),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              TextField(
+                controller: titleController,
+                decoration: InputDecoration(labelText: "Titolo"),
+              ),
+              TextField(
+                controller: descriptionController,
+                decoration: InputDecoration(labelText: "Descrizione"),
+              ),
+              DropdownButtonFormField(
+                value: selectedCategory,
+                items: categories.map((String category) {
+                  return DropdownMenuItem(
+                    value: category,
+                    child: Text(category),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedCategory = value.toString();
+                  });
+                },
+                decoration: InputDecoration(labelText: "Categoria"),
+              ),
+              TextField(
+                controller: discountController,
+                decoration: InputDecoration(labelText: "Sconto (%)"),
+                keyboardType: TextInputType.number,
+              ),
+              ListTile(
+                title: Text(startDate == null
+                    ? "Seleziona data di inizio"
+                    : "Inizio: ${startDate!.toLocal()}"),
+                trailing: Icon(Icons.calendar_today),
+                onTap: () async {
+                  DateTime? picked = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked != null) {
+                    setState(() {
+                      startDate = picked;
+                    });
+                  }
+                },
+              ),
+              ListTile(
+                title: Text(endDate == null
+                    ? "Seleziona data di fine"
+                    : "Fine: ${endDate!.toLocal()}"),
+                trailing: Icon(Icons.calendar_today),
+                onTap: () async {
+                  DateTime? picked = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked != null) {
+                    setState(() {
+                      endDate = picked;
+                    });
+                  }
+                },
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _createOffer,
+                child: Text("Crea Offerta"),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

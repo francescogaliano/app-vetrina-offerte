@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'edit_offer_screen.dart'; // 🔹 Importiamo la schermata di modifica
 import '../services/api_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class OfferDetailsPage extends StatefulWidget {
   final String offerId;
@@ -80,7 +82,7 @@ class _OfferDetailsPageState extends State<OfferDetailsPage> {
           category: offerData?['category'] ?? '',
           description: offerData?['description'] ?? '',
           discount: (offerData?['discount'] ?? 0).toDouble(),
-          imageUrl: offerData?['imageUrl'] ?? '',
+          images: offerData?['images'] ?? '',
           startDate: offerData?['startDate'] ?? '',
           endDate: offerData?['endDate'] ?? '',
         ),
@@ -126,20 +128,36 @@ class _OfferDetailsPageState extends State<OfferDetailsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 🔹 Immagine dell'offerta
-            Hero(
-              tag: widget.offerId,
-              child: Image.network(
-                offerData?['imageUrl'],
-                width: double.infinity,
-                height: 250,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Image.asset(
-                    'assets/images/placeholder.png',
-                    height: 250,
-                    fit: BoxFit.cover),
+            // 🔹 Carosello orizzontale delle immagini
+            SizedBox(
+              height: 250, // Impostiamo l'altezza fissa per il carosello
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: (offerData!['images'] as List).length,
+                itemBuilder: (context, index) {
+                  var image = offerData!['images'][index];
+                  return Padding(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: 5), // Spazio tra le immagini
+                    child: ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(10), // Bordo arrotondato
+                      child: CachedNetworkImage(
+                        imageUrl: image["url"],
+                        width: 300, // Larghezza per ogni immagine nel carosello
+                        height: 250,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) =>
+                            Center(child: CircularProgressIndicator()),
+                        errorWidget: (context, url, error) =>
+                            Icon(Icons.image_not_supported, size: 50),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
+            SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(

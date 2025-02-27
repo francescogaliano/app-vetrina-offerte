@@ -1,9 +1,15 @@
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:typed_data';
+import 'package:image_picker/image_picker.dart';
 
 class ApiService {
-  static const String baseUrl = "http://127.0.0.1:8000";
+  static const String baseUrl = "http://localhost:8000";
+  //"https://fastapi-app-915326060787.europe-west1.run.app";
 
   /// 🔹 Ottiene il token JWT di Firebase
   static Future<String?> _getToken() async {
@@ -85,7 +91,7 @@ class ApiService {
   }
 
   /// 🔹 API per creare un'offerta (SOLO per `vendor` e `admin`)
-  static Future<void> createOffer(
+  static Future<Map<String, dynamic>?> createOffer(
       String title,
       String description,
       String category,
@@ -98,7 +104,7 @@ class ApiService {
 
     if (token == null) {
       print("❌ Utente non autenticato");
-      return;
+      return null;
     }
 
     final response = await http.post(
@@ -113,6 +119,7 @@ class ApiService {
         "description": description,
         "discount": discount,
         "imageUrl": imageUrl,
+        "images": [], // 🔹 Inizialmente nessuna immagine
         "vendorId": vendorId,
         "startDate": startDate,
         "endDate": endDate,
@@ -121,8 +128,11 @@ class ApiService {
 
     if (response.statusCode == 200) {
       print("✅ Offerta creata con successo!");
+      return jsonDecode(
+          response.body); // 🔹 Ora restituisce i dettagli dell'offerta
     } else {
       print("❌ Errore nella creazione dell'offerta: ${response.body}");
+      return null;
     }
   }
 
@@ -142,7 +152,6 @@ class ApiService {
   static Future<void> updateOffer(
       String offerId, Map<String, dynamic> updateData) async {
     String? token = await _getToken();
-
     if (token == null) {
       print("❌ Utente non autenticato");
       return;
@@ -186,5 +195,65 @@ class ApiService {
       print("❌ Errore nella cancellazione dell'offerta: ${response.body}");
       return false;
     }
+  }
+
+  static Future<Map<String, dynamic>?> uploadOfferImage(
+      String offerId, XFile imageFile) async {
+    print("🔹 Upload immagine per offerta $offerId");
+    try {
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('offers/$offerId/${imageFile.name}');
+
+      UploadTask uploadTask;
+
+      if (kIsWeb) {
+        // **UPLOAD PER FLUTTER WEB**
+        Uint8List imageBytes = await imageFile.readAsBytes();
+        SettableMetadata metadata =
+            SettableMetadata(contentType: "image/jpeg"); // ✅ Forza il tipo MIME
+        uploadTask = ref.putData(imageBytes, metadata);
+      } else {
+        // **UPLOAD PER ANDROID & iOS**
+        File file = File(imageFile.path);
+        String fileExtension = imageFile.path.split('.').last.toLowerCase();
+
+        // 🔹 Determiniamo il contentType in base all'estensione
+        String contentType =
+            (fileExtension == "png") ? "image/png" : "image/jpeg";
+        SettableMetadata metadata = SettableMetadata(contentType: contentType);
+
+        uploadTask = ref.putFile(file, metadata);
+      }
+      // 🔹 Aspettiamo il completamento dell'upload
+      await uploadTask.whenComplete(() => print("✅ Upload completato"));
+
+      final url = await ref.getDownloadURL(); // Ottieni URL dell'immagine
+      print("✅ Immagine caricata: $url");
+      return {
+        "url": url,
+        "is_cover": false // Inizialmente nessuna immagine è copertina
+      };
+    } catch (e) {
+      print("❌ Errore upload immagine: $e");
+      return null;
+    }
+  }
+
+  static Future<void> setCoverImage(String offerId, String imageUrl) async {
+    await http.put(
+      Uri.parse("$baseUrl/offers/$offerId/set-cover"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"imageUrl": imageUrl}),
+    );
+  }
+
+  /// **🔹 Elimina un'immagine dall'offerta**
+  static Future<void> deleteOfferImage(String offerId, String imageUrl) async {
+    await http.delete(
+      Uri.parse("$baseUrl/offers/$offerId/delete-image"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"imageUrl": imageUrl}),
+    );
   }
 }
